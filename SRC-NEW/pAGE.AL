@@ -16,9 +16,8 @@ page 80404 "MAHE Run Report Format"
             {
                 IndentationColumn = Rec.Indentation;
                 IndentationControls = Module;
-                ShowAsTree = true; // ✅ ENABLES EXPAND/COLLAPSE
+                ShowAsTree = true;
 
-                // ✅ Expand/Collapse indicator
                 field(ExpandCollapse; GetExpandCollapseIcon())
                 {
                     Caption = ' ';
@@ -40,7 +39,7 @@ page 80404 "MAHE Run Report Format"
                 {
                     ApplicationArea = All;
                     StyleExpr = ModuleStyle;
-                    Editable = Rec."Is Header"; // Only editable for headers
+                    Editable = Rec."Is Header";
 
                     trigger OnValidate()
                     begin
@@ -66,7 +65,7 @@ page 80404 "MAHE Run Report Format"
                 field("Report ID"; Rec."Report ID")
                 {
                     ApplicationArea = All;
-                    Visible = not Rec."Is Header";
+                    Editable = not Rec."Is Header";
                 }
 
                 field(Description; Rec.Description)
@@ -78,19 +77,25 @@ page 80404 "MAHE Run Report Format"
                 field("Run as"; Rec."Run as")
                 {
                     ApplicationArea = All;
-                    Visible = not Rec."Is Header";
+                    Editable = not Rec."Is Header";
                 }
 
                 field("Is Header"; Rec."Is Header")
                 {
                     ApplicationArea = All;
-                    Visible = false; // Hidden, for internal use
+                    Visible = false;
                 }
 
                 field("Line No."; Rec."Line No.")
                 {
                     ApplicationArea = All;
-                    Visible = false; // Hidden, for debugging
+                    Visible = false;
+                }
+
+                field(Indentation; Rec.Indentation)
+                {
+                    ApplicationArea = All;
+                    Visible = false;
                 }
             }
         }
@@ -100,7 +105,7 @@ page 80404 "MAHE Run Report Format"
     {
         area(Processing)
         {
-            // ✅ ADD NEW MODULE HEADER
+            // ✅ ADD NEW MODULE HEADER - FIXED
             action(AddModuleHeader)
             {
                 ApplicationArea = All;
@@ -115,23 +120,17 @@ page 80404 "MAHE Run Report Format"
                     NewRec: Record "Select Reports Formats";
                     ModuleName: Text[250];
                 begin
-                    // Prompt for Module name
-                    if Page.RunModal(Page::"Module Name Input", NewRec) = Action::OK then begin
-                        // Or use simple input
-                    end;
-
-                    NewRec.Init();
-                    NewRec."user ID" := UserId;
-                    NewRec."Line No." := NewRec.GetNextLineNo();
-                    NewRec."Is Header" := true;
-                    NewRec.Indentation := 0;
-                    NewRec.Expanded := true;
-
-                    // Get Module name via dialog
+                    // ✅ Get Module name FIRST via input dialog
                     ModuleName := GetModuleNameInput();
                     if ModuleName = '' then
                         exit;
 
+                    NewRec.Init();
+                    NewRec."user ID" := UserId;
+                    NewRec."Line No." := GetNextLineNo(UserId); // ✅ FIXED: Using local procedure
+                    NewRec."Is Header" := true;
+                    NewRec.Indentation := 0;
+                    NewRec.Expanded := true;
                     NewRec.Module := ModuleName;
                     NewRec.Description := ModuleName;
                     NewRec.Insert(true);
@@ -140,7 +139,7 @@ page 80404 "MAHE Run Report Format"
                 end;
             }
 
-            // ✅ ADD REPORT UNDER CURRENT MODULE
+            // ✅ ADD REPORT UNDER CURRENT MODULE - FIXED
             action(AddReportUnderModule)
             {
                 ApplicationArea = All;
@@ -164,10 +163,10 @@ page 80404 "MAHE Run Report Format"
 
                     NewRec.Init();
                     NewRec."user ID" := UserId;
-                    NewRec."Line No." := Rec.GetNextLineNoUnderParent(ParentLineNo);
+                    NewRec."Line No." := GetNextLineNoUnderParent(UserId, ParentLineNo); // ✅ FIXED
                     NewRec."Is Header" := false;
                     NewRec.Indentation := 1;
-                    NewRec.Module := ParentModule; // ✅ AUTO-INHERIT MODULE NAME
+                    NewRec.Module := ParentModule;
                     NewRec."Parent Line No." := ParentLineNo;
                     NewRec.Insert(true);
 
@@ -176,7 +175,6 @@ page 80404 "MAHE Run Report Format"
                 end;
             }
 
-            // ✅ EXPAND ALL
             action(ExpandAll)
             {
                 ApplicationArea = All;
@@ -197,7 +195,6 @@ page 80404 "MAHE Run Report Format"
                 end;
             }
 
-            // ✅ COLLAPSE ALL
             action(CollapseAll)
             {
                 ApplicationArea = All;
@@ -257,9 +254,9 @@ page 80404 "MAHE Run Report Format"
         ParentModule: Text[250];
     begin
         Rec."user ID" := UserId;
-        Rec."Line No." := Rec.GetNextLineNo();
+        Rec."Line No." := GetNextLineNo(UserId); // ✅ FIXED
 
-        // ✅ AUTO-INHERIT MODULE from previous record
+        // Auto-inherit from previous record
         if xRec."Line No." <> 0 then begin
             GetParentInfo(ParentLineNo, ParentModule);
             if ParentModule <> '' then begin
@@ -274,10 +271,6 @@ page 80404 "MAHE Run Report Format"
     trigger OnAfterGetRecord()
     begin
         SetStyles();
-
-        // ✅ FILTER OUT COLLAPSED CHILDREN
-        if ShouldHideRecord() then
-            Rec.Mark(false);
     end;
 
     trigger OnOpenPage()
@@ -298,7 +291,37 @@ page 80404 "MAHE Run Report Format"
         Rec.SetRange("user ID", UserId);
     end;
 
-    // ✅ Get Expand/Collapse Icon
+    // ✅ FIXED: Local procedure to get next line no
+    local procedure GetNextLineNo(UserIDFilter: Code[50]): Integer
+    var
+        SelectReportsFormats: Record "Select Reports Formats";
+    begin
+        SelectReportsFormats.Reset();
+        SelectReportsFormats.SetRange("user ID", UserIDFilter);
+        if SelectReportsFormats.FindLast() then
+            exit(SelectReportsFormats."Line No." + 10000)
+        else
+            exit(10000);
+    end;
+
+    // ✅ FIXED: Local procedure to get next line no under parent
+    local procedure GetNextLineNoUnderParent(UserIDFilter: Code[50]; ParentLineNo: Integer): Integer
+    var
+        SelectReportsFormats: Record "Select Reports Formats";
+        NextLineNo: Integer;
+    begin
+        SelectReportsFormats.Reset();
+        SelectReportsFormats.SetRange("user ID", UserIDFilter);
+        SelectReportsFormats.SetRange("Parent Line No.", ParentLineNo);
+        
+        if SelectReportsFormats.FindLast() then
+            NextLineNo := SelectReportsFormats."Line No." + 1000
+        else
+            NextLineNo := ParentLineNo + 1000;
+
+        exit(NextLineNo);
+    end;
+
     local procedure GetExpandCollapseIcon(): Text
     begin
         if not Rec."Is Header" then
@@ -308,12 +331,11 @@ page 80404 "MAHE Run Report Format"
             exit('');
 
         if Rec.Expanded then
-            exit('▼') // Expanded
+            exit('▼')
         else
-            exit('▶'); // Collapsed
+            exit('▶');
     end;
 
-    // ✅ Get Run text (empty for headers)
     local procedure GetRunText(): Text
     begin
         if Rec."Is Header" then
@@ -322,7 +344,6 @@ page 80404 "MAHE Run Report Format"
             exit('Run');
     end;
 
-    // ✅ Set visual styles
     local procedure SetStyles()
     begin
         if Rec."Is Header" then begin
@@ -336,25 +357,6 @@ page 80404 "MAHE Run Report Format"
         end;
     end;
 
-    // ✅ Check if record should be hidden (collapsed)
-    local procedure ShouldHideRecord(): Boolean
-    var
-        ParentRec: Record "Select Reports Formats";
-    begin
-        if Rec."Is Header" then
-            exit(false);
-
-        if Rec."Parent Line No." = 0 then
-            exit(false);
-
-        if ParentRec.Get(Rec."user ID", Rec."Parent Line No.") then
-            if not ParentRec.Expanded then
-                exit(true);
-
-        exit(false);
-    end;
-
-    // ✅ Get parent module info
     local procedure GetParentInfo(var ParentLineNo: Integer; var ParentModule: Text[250])
     var
         ParentRec: Record "Select Reports Formats";
@@ -371,7 +373,6 @@ page 80404 "MAHE Run Report Format"
                 ParentModule := ParentRec.Module;
             end;
         end else if Rec.Module <> '' then begin
-            // Find header with same module name
             ParentRec.Reset();
             ParentRec.SetRange("user ID", UserId);
             ParentRec.SetRange("Is Header", true);
@@ -383,7 +384,6 @@ page 80404 "MAHE Run Report Format"
         end;
     end;
 
-    // ✅ Update children when parent module name changes
     local procedure UpdateChildrenModuleName()
     var
         ChildRec: Record "Select Reports Formats";
@@ -394,19 +394,18 @@ page 80404 "MAHE Run Report Format"
         ChildRec.ModifyAll(Module, Rec.Module);
     end;
 
-    // ✅ Simple input dialog for module name
+    // ✅ FIXED: Simple input dialog for module name
     local procedure GetModuleNameInput(): Text[250]
     var
         ModuleName: Text[250];
+        InputPage: Page "Module Name Input";
     begin
         ModuleName := '';
-        if Evaluate(ModuleName, '') then;
-
-        // Using simple input
-        if not (Dialog.Open('Enter Module Name:\\ @1@@@@@@@@@@') = true) then
-            Error('');
-
-        ModuleName := CopyStr(ModuleName, 1, 250);
+        
+        // Option 1: Using a simple page
+        if InputPage.RunModal() = Action::OK then
+            ModuleName := InputPage.GetModuleName();
+        
         exit(ModuleName);
     end;
 

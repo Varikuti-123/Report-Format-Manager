@@ -8,6 +8,7 @@ page 53601 MAHEBudgetDimWiseRM
     ApplicationArea = All;
     InsertAllowed = false;
     DeleteAllowed = false;
+    ModifyAllowed = false;
 
     layout
     {
@@ -25,36 +26,42 @@ page 53601 MAHEBudgetDimWiseRM
                     Visible = ShortCutDim1Visible;
                     Editable = false;
                 }
+                //PwC VS 190825++
                 Field("Shortcut Dimension 1 Name"; ShortCutDimName(1))
                 {
                     Editable = False;
                     Visible = ShortCutDim1Visible;
                     CaptionClass = Rec.GetDimCaption(1) + ' NAME';
                 }
+                //PwC VS 190825--
                 field("Shortcut Dimension 2 Code"; Rec."Shortcut Dimension 2 Code")
                 {
                     CaptionClass = Rec.GetDimCaption(2);
                     Visible = ShortCutDim2Visible;
                     Editable = false;
                 }
+                //PwC VS 190825++
                 Field("Shortcut Dimension 2 Name"; ShortCutDimName(2))
                 {
                     Editable = False;
                     Visible = ShortCutDim2Visible;
                     CaptionClass = Rec.GetDimCaption(2) + ' Name';
                 }
+                //PwC VS 190825--
                 field("Shortcut Dimension 3 Code"; Rec."Shortcut Dimension 3 Code")
                 {
                     CaptionClass = Rec.GetDimCaption(3);
                     Visible = ShortCutDim3Visible;
                     Editable = false;
                 }
+                //PwC VS 190825++
                 Field("Shortcut Dimension 3 Name"; ShortCutDimName(3))
                 {
                     Editable = False;
                     Visible = ShortCutDim3Visible;
                     CaptionClass = Rec.GetDimCaption(3) + ' Name';
                 }
+                //PwC VS 190825--
                 field("Proposed Amount"; Rec."Proposed Amount")
                 {
                     ApplicationArea = All;
@@ -68,10 +75,12 @@ page 53601 MAHEBudgetDimWiseRM
                 field("PIP Amount"; Rec."PIP Amount")
                 {
                     ApplicationArea = All;
+                    Editable = false;
                 }
                 field("Utilized Amount"; Rec."Utilized Amount")
                 {
                     ApplicationArea = All;
+                    Editable = false;
                 }
                 field("Available Quantity"; Rec."Budgeted Quantity" - Rec."PIP Quantity" - Rec."Utilized Quantity")
                 {
@@ -99,7 +108,7 @@ page 53601 MAHEBudgetDimWiseRM
                     ApplicationArea = All;
                     Editable = false;
                 }
-                field("Balance Amount"; BalanceAmountCalc)
+                field("Balance Amount"; TotalAdditionalBudgetAmt + Rec."Sanctioned Amount" - Rec."Amount Used in Reallocation" - Rec."PIP Amount" - Rec."Utilized Amount")
                 {
                     ApplicationArea = All;
                     Editable = false;
@@ -110,26 +119,36 @@ page 53601 MAHEBudgetDimWiseRM
                     Editable = false;
                 }
                 field(Remarks; Rec.Remarks)
-                { }
+                {
+                    Editable = false;
+                }
                 field(Justification; Rec.Justification)
-                { }
+                {
+                    Editable = false;
+                }
                 field(Purpose; Rec.Purpose)
-                { }
+                {
+                    Editable = false;
+                }
                 field("Capital Budget Type"; Rec."Capital Budget Type")
                 {
                     Visible = BudgetedQtyVisible;
+                    Editable = false;
                 }
                 field("Purchase Type"; Rec."Purchase Type")
                 {
                     Visible = BudgetedQtyVisible;
+                    Editable = false;
                 }
                 field("Asset Group"; Rec."Asset Group")
                 {
                     Visible = BudgetedQtyVisible;
+                    Editable = false;
                 }
                 field("Profile Id"; Rec."Profile Id")
                 {
                     Visible = BudgetedQtyVisible;
+                    Editable = false;
                 }
             }
         }
@@ -147,7 +166,6 @@ page 53601 MAHEBudgetDimWiseRM
                 PromotedCategory = Process;
                 trigger OnAction()
                 var
-                    AdditionalBudgetPage: Page MAHEAdditionalBudgetDimWise;
                     AdditionalBudgetRec: Record MAHEAdditionalBudgetDimWise;
                 begin
                     AdditionalBudgetRec.Reset();
@@ -155,6 +173,7 @@ page 53601 MAHEBudgetDimWiseRM
                     AdditionalBudgetRec.SetRange("No.", Rec."No.");
                     AdditionalBudgetRec.SetRange("Shortcut Dimension 1 Code", Rec."Shortcut Dimension 1 Code");
                     AdditionalBudgetRec.SetRange("Shortcut Dimension 2 Code", Rec."Shortcut Dimension 2 Code");
+                    // Not filtering on Start Date as records are aggregated
                     Page.RunModal(Page::MAHEAdditionalBudgetDimWise, AdditionalBudgetRec);
                 end;
             }
@@ -193,7 +212,7 @@ page 53601 MAHEBudgetDimWiseRM
                     GetDimVales += '|' + Dimension.Code;
             until Dimension.Next() = 0;
 
-        // Store filter values for use in LoadAggregatedData
+        // Store department filter for aggregation
         GlobalDim2Filter := GetDimVales;
 
         BudgetedQtyVisible := false;
@@ -201,7 +220,12 @@ page 53601 MAHEBudgetDimWiseRM
         ShortCutDim2Visible := false;
         ShortCutDim3Visible := false;
 
-        If MAHEBudgetHeader.Get(Rec.GetFilter("Budget Code")) then begin
+        // Store Budget Code filter from RunPageLink
+        GlobalBudgetCodeFilter := Rec.GetFilter("Budget Code");
+        GlobalNoFilter := Rec.GetFilter("No.");
+        GlobalDim1Filter := Rec.GetFilter("Shortcut Dimension 1 Code");
+
+        If MAHEBudgetHeader.Get(GlobalBudgetCodeFilter) then begin
             if MAHEBudgetHeader."Budget Type" = MAHEBudgetHeader."Budget Type"::"Capital Budget" then
                 BudgetedQtyVisible := true;
 
@@ -219,7 +243,6 @@ page 53601 MAHEBudgetDimWiseRM
     trigger OnAfterGetRecord()
     begin
         TotalAdditionalBudgetAmt := GetTotalAdditionalBudgetAggregated(Rec);
-        BalanceAmountCalc := TotalAdditionalBudgetAmt + Rec."Sanctioned Amount" - Rec."Amount Used in Reallocation" - Rec."PIP Amount" - Rec."Utilized Amount";
     end;
 
     var
@@ -231,34 +254,29 @@ page 53601 MAHEBudgetDimWiseRM
         ShortCutDim2Visible: Boolean;
         ShortCutDim3Visible: Boolean;
         GlobalDim2Filter: Text;
+        GlobalBudgetCodeFilter: Text;
+        GlobalNoFilter: Text;
+        GlobalDim1Filter: Text;
         TotalAdditionalBudgetAmt: Decimal;
-        BalanceAmountCalc: Decimal;
-        TempLineNo: Integer;
 
     local procedure LoadAggregatedData()
     var
         ActualRec: Record MAHEBudgetDimWise;
-        TempAggRec: Record MAHEBudgetDimWise temporary;
-        BudgetCodeFilter: Text;
-        NoFilter: Text;
-        Dim1Filter: Text;
-        Dim2Filter: Text;
+        TempCheck: Record MAHEBudgetDimWise temporary;
         Found: Boolean;
     begin
-        // Clear existing temp records
+        // Clear temp records
         Rec.Reset();
         Rec.DeleteAll();
-        TempLineNo := 0;
 
-        // Get filters that were set on the page before it was opened (from RunPageLink etc.)
-        BudgetCodeFilter := Rec.GetFilter("Budget Code");
-
-        // Read actual data
+        // Read actual data with existing filters
         ActualRec.Reset();
-        if BudgetCodeFilter <> '' then
-            ActualRec.SetFilter("Budget Code", BudgetCodeFilter);
-
-        // Apply the department filter
+        if GlobalBudgetCodeFilter <> '' then
+            ActualRec.SetFilter("Budget Code", GlobalBudgetCodeFilter);
+        if GlobalNoFilter <> '' then
+            ActualRec.SetFilter("No.", GlobalNoFilter);
+        if GlobalDim1Filter <> '' then
+            ActualRec.SetFilter("Shortcut Dimension 1 Code", GlobalDim1Filter);
         if GlobalDim2Filter <> '' then
             ActualRec.SetFilter("Shortcut Dimension 2 Code", GlobalDim2Filter);
 
@@ -266,18 +284,15 @@ page 53601 MAHEBudgetDimWiseRM
             exit;
 
         repeat
-            // Check if we already have an aggregated record for this combination (ignoring Start Date)
+            // Check if aggregated record already exists for this combination (ignoring Start Date)
             Found := false;
-            TempAggRec.Reset();
-            TempAggRec.SetRange("Budget Code", ActualRec."Budget Code");
-            TempAggRec.SetRange("No.", ActualRec."No.");
-            TempAggRec.SetRange("Shortcut Dimension 1 Code", ActualRec."Shortcut Dimension 1 Code");
-            TempAggRec.SetRange("Shortcut Dimension 2 Code", ActualRec."Shortcut Dimension 2 Code");
-            if TempAggRec.FindFirst() then begin
-                // Aggregate amounts into existing temp record
-                Found := true;
-                Rec.Get(TempAggRec."Budget Code", TempAggRec."No.", TempAggRec."Shortcut Dimension 1 Code",
-                        TempAggRec."Shortcut Dimension 2 Code", TempAggRec."Start Date");
+            Rec.Reset();
+            Rec.SetRange("Budget Code", ActualRec."Budget Code");
+            Rec.SetRange("No.", ActualRec."No.");
+            Rec.SetRange("Shortcut Dimension 1 Code", ActualRec."Shortcut Dimension 1 Code");
+            Rec.SetRange("Shortcut Dimension 2 Code", ActualRec."Shortcut Dimension 2 Code");
+            if Rec.FindFirst() then begin
+                // Sum amounts into existing record
                 Rec."Proposed Amount" += ActualRec."Proposed Amount";
                 Rec."Sanctioned Amount" += ActualRec."Sanctioned Amount";
                 Rec."PIP Amount" += ActualRec."PIP Amount";
@@ -293,41 +308,42 @@ page 53601 MAHEBudgetDimWiseRM
                 Rec."Transfer To Capital Budget" += ActualRec."Transfer To Capital Budget";
                 Rec."Credit Memo Amount" += ActualRec."Credit Memo Amount";
                 Rec.Modify();
+                Found := true;
             end;
 
             if not Found then begin
-                // Insert new aggregated record
+                // Insert first record for this combination
+                Rec.Reset();
                 Rec.Init();
                 Rec.TransferFields(ActualRec);
-                // Use the first Start Date found for this combination as the key
                 Rec.Insert();
             end;
         until ActualRec.Next() = 0;
 
-        // Position to first record
+        // Reset filters and position to first
+        Rec.Reset();
         if Rec.FindFirst() then;
     end;
 
     local procedure GetTotalAdditionalBudgetAggregated(BudgetDimWise: Record MAHEBudgetDimWise): Decimal
     var
         AdditionalBudget: Record MAHEAdditionalBudgetDimWise;
-        TotalAmt: Decimal;
     begin
-        TotalAmt := 0;
         AdditionalBudget.Reset();
         AdditionalBudget.SetRange("Budget Code", BudgetDimWise."Budget Code");
         AdditionalBudget.SetRange("No.", BudgetDimWise."No.");
         AdditionalBudget.SetRange("Shortcut Dimension 1 Code", BudgetDimWise."Shortcut Dimension 1 Code");
         AdditionalBudget.SetRange("Shortcut Dimension 2 Code", BudgetDimWise."Shortcut Dimension 2 Code");
-        // Do NOT filter on Start Date - aggregate across all start dates
+        // No Start Date filter - aggregate across all start dates
         AdditionalBudget.SetRange(Status, AdditionalBudget.Status::Approved);
         if AdditionalBudget.FindSet() then begin
             AdditionalBudget.CalcSums("Additional Budget Amount");
-            TotalAmt := AdditionalBudget."Additional Budget Amount";
+            exit(AdditionalBudget."Additional Budget Amount");
         end;
-        exit(TotalAmt);
+        exit(0);
     end;
 
+    //PwC VS 190825++
     local procedure ShortCutDimName(arg: Integer): Text[200]
     var
         DimValue: Record "Dimension Value";
@@ -354,5 +370,6 @@ page 53601 MAHEBudgetDimWiseRM
                 end;
         End;
     end;
+    //PwC VS 190825--
 }
 //PwC VS_GS 110825--
